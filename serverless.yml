@@ -1,0 +1,89 @@
+service: sample-website-sls
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  region: ap-northeast-1
+  role: LambdaRole
+
+resources:
+  Resources:
+    LambdaRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /my/default/path/
+        RoleName: sanmple-lambda-role
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: sample-lambda-policy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource: "*"
+                - Effect: Allow
+                  Action:
+                    - s3:PutObject
+                  Resource: "*"
+    S3Bucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        AccessControl: PublicRead
+        BucketName: sample-website-sls
+        WebsiteConfiguration:
+          IndexDocument: index.html
+    BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        PolicyDocument:
+          Id: PublicPolicy
+          Version: '2012-10-17'
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: '*'
+              Action: 's3:GetObject'
+              Resource: !Sub "arn:aws:s3:::${S3Bucket}/*"
+        Bucket: !Ref S3Bucket
+    CloudFront:
+      Type: 'AWS::CloudFront::Distribution'
+      Properties:
+        DistributionConfig:
+          Comment: 'S3 using CloudFront'
+          Origins:
+          - DomainName: !Sub "${S3Bucket}.s3-website-ap-northeast-1.amazonaws.com"
+            Id: !Sub "S3-Website-${S3Bucket}.s3-website-ap-northeast-1.amazonaws.com"
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+          DefaultCacheBehavior: 
+            TargetOriginId: !Sub "S3-Website-${S3Bucket}.s3-website-ap-northeast-1.amazonaws.com"
+            ForwardedValues:
+              QueryString: 'false'
+            ViewerProtocolPolicy: allow-all
+          Enabled: 'true'
+  Outputs:
+    WebsiteURL:
+      Value: !GetAtt 
+        - S3Bucket
+        - WebsiteURL
+      Description: S3 URL
+    CloudFrontURL:
+      Value: !GetAtt CloudFront.DomainName
+      Description: CloudFront URL
+
+functions:
+  s3put:
+    role: LambdaRole
+    handler: handler.s3put
